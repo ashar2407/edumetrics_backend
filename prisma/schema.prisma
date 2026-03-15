@@ -1,0 +1,69 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Teachers / Educators
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String   // In a real app, this MUST be securely hashed (e.g., using bcrypt)
+  role      String   @default("Teacher")
+  classes   Class[]
+  createdAt DateTime @default(now())
+}
+
+// 2. Subjects / Classrooms
+model Class {
+  id          String       @id @default(uuid())
+  name        String
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  students    Student[]
+  assessments Assessment[]
+  createdAt   DateTime     @default(now())
+}
+
+// 3. Students
+model Student {
+  id         String   @id @default(uuid())
+  externalId String   // The school's official ID (e.g., STU-1001)
+  name       String
+  classId    String
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  scores     Score[]
+  createdAt  DateTime @default(now())
+
+  // Prevents adding the same student to the same class twice
+  @@unique([externalId, classId])
+}
+
+// 4. Tests / Assessments
+model Assessment {
+  id        String   @id @default(uuid())
+  name      String
+  date      String   // Storing as YYYY-MM-DD string to easily match the CSV uploads
+  topic     String?
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  scores    Score[]
+  createdAt DateTime @default(now())
+}
+
+// 5. Individual Grades
+model Score {
+  id           String     @id @default(uuid())
+  score        Float      // The calculated percentage
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  // A student can only have one score per specific assessment
+  @@unique([studentId, assessmentId])
+}
