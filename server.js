@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({
   origin: [
     'http://localhost:5173', 
-    'https://edu-metrics-git-main-ashar2407s-projects.vercel.app' // <-- PUT YOUR REAL VERCEL LINK HERE!
+    'https://edu-metrics-gray.vercel.app/' // <-- PUT YOUR REAL VERCEL LINK HERE!
   ]
 })); // Allows your React frontend to communicate with this backend
 app.use(express.json()); // Parses incoming JSON requests
