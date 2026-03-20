@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.99.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "nodemailer": "^8.0.3",
     "stripe": "^16.0.0"
   },
   "devDependencies": {
