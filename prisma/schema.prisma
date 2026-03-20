@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // pooler URL — used at runtime
+  directUrl = env("DIRECT_DATABASE_URL") // direct URL — used for migrations only
 }
 
 generator client {
@@ -13,7 +14,9 @@ model User {
   username  String   @unique
   password  String   // In a real app, this MUST be securely hashed (e.g., using bcrypt)
   role      String   @default("Teacher")
+  isPremium Boolean  @default(false)
   classes   Class[]
+  notes     StudentNote[]
   createdAt DateTime @default(now())
 }
 
@@ -66,4 +69,18 @@ model Score {
 
   // A student can only have one score per specific assessment
   @@unique([studentId, assessmentId])
+}
+
+
+model StudentNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentId String
+  note      String   @default("")
+  goal      Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, studentId])
 }
