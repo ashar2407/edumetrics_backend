@@ -242,6 +242,29 @@ app.get('/api/notes/:userId', async (req, res) => {
 });
 
 
+
+// ==========================================
+// UPDATE EMAIL ENDPOINT
+// ==========================================
+
+// Allow a user to add or update their email after account creation
+app.post('/api/user/email', async (req, res) => {
+  try {
+    const { userId, email } = req.body;
+    if (!userId || !email) return res.status(400).json({ error: 'userId and email are required' });
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { email }
+    });
+
+    res.json({ success: true, email: user.email });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update email' });
+  }
+});
+
 // ==========================================
 // AT-RISK EMAIL NOTIFICATIONS
 // ==========================================
