@@ -15,9 +15,11 @@ model User {
   password  String   // In a real app, this MUST be securely hashed (e.g., using bcrypt)
   email     String?  // Optional — unlocks email notifications
   role      String   @default("Teacher")
-  isPremium Boolean  @default(false)
-  classes   Class[]
-  notes     StudentNote[]
+  isPremium          Boolean   @default(false)
+  resetToken         String?   // for password reset
+  resetTokenExpiry   DateTime? // token expires after 1 hour
+  classes            Class[]
+  notes              StudentNote[]
   createdAt DateTime @default(now())
 }
 
