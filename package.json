@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.99.1",
     "bcrypt": "^5.1.1",
@@ -19,9 +20,14 @@
     "express": "^5.2.1",
     "nodemailer": "^8.0.3",
     "stripe": "^16.0.0",
-    "tar": "^7.5.12"
+    "tar": "^7.5.12",
+    "uuid": "^14.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {
     "prisma": "^5.22.0"
+  },
+  "overrides": {
+    "tar": "^7.5.12"
   }
 }

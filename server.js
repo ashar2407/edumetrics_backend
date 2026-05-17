@@ -6,6 +6,7 @@ const SALT_ROUNDS = 12;
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const importRouter = require('./routes/import');
 
 // Initialize Prisma to connect to PostgreSQL
 const prisma = new PrismaClient();
@@ -29,6 +30,7 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
 // All other routes use JSON
 app.use(express.json());
+app.use('/api/import', importRouter);
 
 
 // ==========================================

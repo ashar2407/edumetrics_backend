@@ -1,7 +1,15 @@
+// schema.prisma
+// Changes from original:
+//   1. Added MappingTemplate model (saves column mappings per user)
+//   2. Added @@unique([userId, name]) to Class   — needed for import upsert
+//   3. Added @@unique([name, classId]) to Student — needed for import upsert
+//   4. Added @@unique([name, classId]) to Assessment — needed for import upsert
+//   5. Added mappingTemplates relation to User
+
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")        // pooler URL — used at runtime
-  directUrl = env("DIRECT_DATABASE_URL") // direct URL — used for migrations only
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 generator client {
@@ -10,17 +18,18 @@ generator client {
 
 // 1. Teachers / Educators
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String   // In a real app, this MUST be securely hashed (e.g., using bcrypt)
-  email     String?  // Optional — unlocks email notifications
-  role      String   @default("Teacher")
-  isPremium          Boolean   @default(false)
-  resetToken         String?   // for password reset
-  resetTokenExpiry   DateTime? // token expires after 1 hour
+  id                 String              @id @default(uuid())
+  username           String              @unique
+  password           String
+  email              String?
+  role               String              @default("Teacher")
+  isPremium          Boolean             @default(false)
+  resetToken         String?
+  resetTokenExpiry   DateTime?
   classes            Class[]
   notes              StudentNote[]
-  createdAt DateTime @default(now())
+  mappingTemplates   MappingTemplate[]   // NEW
+  createdAt          DateTime            @default(now())
 }
 
 // 2. Subjects / Classrooms
@@ -32,49 +41,52 @@ model Class {
   students    Student[]
   assessments Assessment[]
   createdAt   DateTime     @default(now())
+
+  @@unique([userId, name])  // NEW — allows upsert by user + subject name
 }
 
 // 3. Students
 model Student {
   id         String   @id @default(uuid())
-  externalId String   // The school's official ID (e.g., STU-1001)
+  externalId String?  // Made optional — not all files have an ID column
   name       String
   classId    String
   class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
   scores     Score[]
   createdAt  DateTime @default(now())
 
-  // Prevents adding the same student to the same class twice
-  @@unique([externalId, classId])
+  @@unique([name, classId])        // NEW — allows upsert by name + class
+  @@unique([externalId, classId])  // KEPT — original unique constraint
 }
 
 // 4. Tests / Assessments
 model Assessment {
   id        String   @id @default(uuid())
   name      String
-  date      String   // Storing as YYYY-MM-DD string to easily match the CSV uploads
+  date      String?
   topic     String?
   classId   String
   class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
   scores    Score[]
   createdAt DateTime @default(now())
+
+  @@unique([name, classId])  // NEW — allows upsert by assessment name + class
 }
 
 // 5. Individual Grades
 model Score {
   id           String     @id @default(uuid())
-  score        Float      // The calculated percentage
+  score        Float
   studentId    String
   student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
   assessmentId String
   assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
 
-  // A student can only have one score per specific assessment
   @@unique([studentId, assessmentId])
 }
 
-
+// 6. Teacher notes + goals per student (unchanged)
 model StudentNote {
   id        String   @id @default(cuid())
   userId    String
@@ -86,4 +98,21 @@ model StudentNote {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, studentId])
+}
+
+// 7. NEW — Saved column mapping templates
+// When a teacher uploads a file and confirms the mapping, they can save it.
+// The next time a file with identical headers is uploaded, the mapping is
+// applied automatically with no manual review needed.
+model MappingTemplate {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String                    // e.g. "SIMS Export", "Canvas Gradebook"
+  sourceFingerprint String                    // MD5 hash of sorted normalised headers
+  mappings          Json                      // { student_name: "Name", grade: "Score", ... }
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, sourceFingerprint])       // one template per unique header layout per user
 }
