@@ -68,7 +68,7 @@ async function importSessionData(session, prisma) {
   for (let i = 0; i < imported.length; i += CHUNK_SIZE) {
     const chunk = imported.slice(i, i + CHUNK_SIZE);
 
-    const chunkErrors = await writeChunk(chunk, parseInt(userId), prisma);
+    const chunkErrors = await writeChunk(chunk, String(userId), prisma);
     importedCount += chunk.length - chunkErrors.length;
     errors.push(...chunkErrors);
     skipped += chunkErrors.length;
