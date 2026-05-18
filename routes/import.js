@@ -90,7 +90,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     // 4. Check for a saved template that matches these headers
     const fingerprint = fingerprintHeaders(table.headers);
     const savedTemplate = await prisma.mappingTemplate.findFirst({
-      where: { userId: parseInt(userId), sourceFingerprint: fingerprint },
+      where: { userId: String(userId), sourceFingerprint: fingerprint },
       orderBy: { updatedAt: 'desc' },
     });
 
@@ -199,13 +199,13 @@ router.post('/:sessionId/confirm', async (req, res) => {
       await prisma.mappingTemplate.upsert({
         where: {
           userId_sourceFingerprint: {
-            userId:            parseInt(session.userId),
+            userId:            String(session.userId),
             sourceFingerprint: session.fingerprint,
           },
         },
         update: { mappings: mapping, name: templateName, updatedAt: new Date() },
         create: {
-          userId:            parseInt(session.userId),
+          userId:            String(session.userId),
           name:              templateName,
           sourceFingerprint: session.fingerprint,
           mappings:          mapping,
@@ -289,7 +289,7 @@ router.get('/templates', async (req, res) => {
 
   try {
     const templates = await prisma.mappingTemplate.findMany({
-      where: { userId: parseInt(userId) },
+      where: { userId: String(userId) },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, name: true, mappings: true, updatedAt: true },
     });
@@ -309,7 +309,7 @@ router.delete('/templates/:id', async (req, res) => {
 
   try {
     await prisma.mappingTemplate.deleteMany({
-      where: { id: req.params.id, userId: parseInt(userId) },
+      where: { id: req.params.id, userId: String(userId) },
     });
     return res.json({ status: 'deleted' });
   } catch (err) {
