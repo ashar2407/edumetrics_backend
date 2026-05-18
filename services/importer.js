@@ -68,7 +68,7 @@ async function importSessionData(session, prisma) {
   for (let i = 0; i < imported.length; i += CHUNK_SIZE) {
     const chunk = imported.slice(i, i + CHUNK_SIZE);
 
-    const chunkErrors = await writeChunk(chunk, String(userId), prisma);
+    const chunkErrors = await writeChunk(chunk, parseInt(userId), prisma);
     importedCount += chunk.length - chunkErrors.length;
     errors.push(...chunkErrors);
     skipped += chunkErrors.length;
@@ -209,7 +209,7 @@ async function writeChunk(chunk, userId, prisma) {
       // 2. Find or create the Student within that class
       const studentRecord = await prisma.student.upsert({
         where: {
-          classId_name: { classId: classRecord.id, name: record.studentName },
+          name_classId: { name: record.studentName, classId: classRecord.id },
         },
         update: { externalId: record.studentId || undefined },
         create: {
@@ -221,7 +221,7 @@ async function writeChunk(chunk, userId, prisma) {
 
       // 3. Find or create the Assessment
       const assessmentRecord = await prisma.assessment.upsert({
-        where:  { classId_name: { classId: classRecord.id, name: record.assessment } },
+        where:  { name_classId: { name: record.assessment, classId: classRecord.id } },
         update: { date: record.date || undefined },
         create: {
           classId: classRecord.id,
