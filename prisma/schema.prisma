@@ -43,6 +43,7 @@ model Class {
   createdAt   DateTime     @default(now())
 
   @@unique([userId, name])  // NEW — allows upsert by user + subject name
+  @@index([userId])         // speeds up "all classes for user" queries
 }
 
 // 3. Students
@@ -57,6 +58,7 @@ model Student {
 
   @@unique([name, classId])        // NEW — allows upsert by name + class
   @@unique([externalId, classId])  // KEPT — original unique constraint
+  @@index([classId])               // speeds up student lookups by class
 }
 
 // 4. Tests / Assessments
@@ -71,6 +73,7 @@ model Assessment {
   createdAt DateTime @default(now())
 
   @@unique([name, classId])  // NEW — allows upsert by assessment name + class
+  @@index([classId])         // speeds up assessment lookups by class
 }
 
 // 5. Individual Grades
@@ -84,6 +87,8 @@ model Score {
   createdAt    DateTime   @default(now())
 
   @@unique([studentId, assessmentId])
+  @@index([studentId])     // speeds up score lookups by student
+  @@index([assessmentId])  // speeds up score lookups by assessment
 }
 
 // 6. Teacher notes + goals per student (unchanged)

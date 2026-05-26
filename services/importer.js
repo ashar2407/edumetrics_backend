@@ -8,7 +8,7 @@
 const { parseFile }   = require('./fileParser');
 const { detectTable } = require('./tableDetector');
 
-const CHUNK_SIZE = 500;
+const CONCURRENCY = 25; // parallel score upserts per batch
 
 /**
  * importSessionData(session, prisma)
@@ -62,23 +62,122 @@ async function importSessionData(session, prisma) {
     }
   }
 
-  // Write to DB in chunks using Prisma
-  let importedCount = 0;
+  // ── Phase 1: Pre-create all unique Classes (O(unique subjects) DB calls)
+  // Classes repeat across every row — cache them upfront instead of
+  // re-upserting on every single row.
+  const uniqueSubjects = [...new Set(imported.map(r => r.record.subject))];
+  const classMap = new Map(); // subject → classId
 
-  for (let i = 0; i < imported.length; i += CHUNK_SIZE) {
-    const chunk = imported.slice(i, i + CHUNK_SIZE);
-
-    const chunkErrors = await writeChunk(chunk, String(userId), prisma);
-    importedCount += chunk.length - chunkErrors.length;
-    errors.push(...chunkErrors);
-    skipped += chunkErrors.length;
+  for (const subject of uniqueSubjects) {
+    const cls = await prisma.class.upsert({
+      where:  { userId_name: { userId: String(userId), name: subject } },
+      update: {},
+      create: { userId: String(userId), name: subject },
+      select: { id: true },
+    });
+    classMap.set(subject, cls.id);
   }
 
-  return {
-    imported: importedCount,
-    skipped,
-    errors,
-  };
+  // ── Phase 2: Pre-create all unique Assessments (O(unique assessments) calls)
+  const uniqueAssessmentKeys = new Map(); // `classId:name` → { classId, name, date, notes }
+  for (const { record } of imported) {
+    const classId = classMap.get(record.subject);
+    const key = `${classId}:${record.assessment}`;
+    if (!uniqueAssessmentKeys.has(key)) {
+      uniqueAssessmentKeys.set(key, { classId, name: record.assessment, date: record.date, notes: record.notes });
+    }
+  }
+
+  const assessmentMap = new Map(); // `classId:name` → assessmentId
+  for (const [key, { classId, name, date, notes }] of uniqueAssessmentKeys) {
+    const a = await prisma.assessment.upsert({
+      where:  { name_classId: { name, classId } },
+      update: { date: date || undefined },
+      create: { classId, name, date: date || null, topic: notes || null },
+      select: { id: true },
+    });
+    assessmentMap.set(key, a.id);
+  }
+
+  // ── Phase 3: Batch-create Students per class, then fetch their IDs in bulk
+  // createMany + skipDuplicates is far faster than N individual upserts.
+  // We then fetch all IDs in a single query per class.
+  const studentMap = new Map(); // `classId:name` → studentId
+
+  // Group by classId to keep createMany payloads scoped
+  const studentsByClass = new Map();
+  for (const { record } of imported) {
+    const classId = classMap.get(record.subject);
+    if (!studentsByClass.has(classId)) studentsByClass.set(classId, new Map());
+    const key = record.studentName;
+    if (!studentsByClass.get(classId).has(key)) {
+      studentsByClass.get(classId).set(key, {
+        classId,
+        name:       record.studentName,
+        externalId: record.studentId || null,
+      });
+    }
+  }
+
+  for (const [classId, studentsForClass] of studentsByClass) {
+    const studentRows = [...studentsForClass.values()];
+
+    // Insert any that don't exist yet (existing ones silently skipped)
+    await prisma.student.createMany({ data: studentRows, skipDuplicates: true });
+
+    // Fetch all IDs for this class in one query
+    const fetched = await prisma.student.findMany({
+      where:  { classId, name: { in: studentRows.map(s => s.name) } },
+      select: { id: true, name: true },
+    });
+    for (const s of fetched) {
+      studentMap.set(`${classId}:${s.name}`, s.id);
+    }
+  }
+
+  // ── Phase 4: Parallel Score upserts in batches of CONCURRENCY
+  // Scores are unique per (student, assessment) so we can't skip them —
+  // a re-import should update the grade. Run in parallel groups to avoid
+  // overwhelming the connection pool.
+  let importedCount = 0;
+
+  const scoreJobs = [];
+  for (const { rowIdx, record } of imported) {
+    const classId      = classMap.get(record.subject);
+    const studentId    = studentMap.get(`${classId}:${record.studentName}`);
+    const assessmentId = assessmentMap.get(`${classId}:${record.assessment}`);
+
+    if (!studentId || !assessmentId) {
+      errors.push({ row: rowIdx + 1, reason: 'Could not resolve student or assessment — row skipped.' });
+      skipped++;
+      continue;
+    }
+
+    scoreJobs.push({ rowIdx, studentId, assessmentId, score: record.grade });
+  }
+
+  for (let i = 0; i < scoreJobs.length; i += CONCURRENCY) {
+    const batch = scoreJobs.slice(i, i + CONCURRENCY);
+
+    const results = await Promise.all(
+      batch.map(({ rowIdx, studentId, assessmentId, score }) =>
+        prisma.score.upsert({
+          where:  { studentId_assessmentId: { studentId, assessmentId } },
+          update: { score },
+          create: { studentId, assessmentId, score },
+        })
+        .then(() => null)
+        .catch(err => ({ row: rowIdx + 1, reason: `Score write failed: ${err.message}` }))
+      )
+    );
+
+    for (const result of results) {
+      if (result) { errors.push(result); skipped++; }
+      else        { importedCount++; }
+    }
+  }
+
+  return { imported: importedCount, skipped, errors };
 }
 
 /**
@@ -187,76 +286,6 @@ function normaliseGrade(raw, maxRaw) {
   if (ukDegree[letterKey] !== undefined) return ukDegree[letterKey];
 
   return null;
-}
-
-/**
- * writeChunk(chunk, userId, prisma)
- * Upserts a chunk of records into the database.
- * Returns array of row-level errors for rows that failed.
- */
-async function writeChunk(chunk, userId, prisma) {
-  const chunkErrors = [];
-
-  for (const { rowIdx, record } of chunk) {
-    try {
-      // 1. Find or create the Class
-      const classRecord = await prisma.class.upsert({
-        where:  { userId_name: { userId, name: record.subject } },
-        update: {},
-        create: { userId, name: record.subject },
-      });
-
-      // 2. Find or create the Student within that class
-      const studentRecord = await prisma.student.upsert({
-        where: {
-          name_classId: { name: record.studentName, classId: classRecord.id },
-        },
-        update: { externalId: record.studentId || undefined },
-        create: {
-          classId:    classRecord.id,
-          name:       record.studentName,
-          externalId: record.studentId || null,
-        },
-      });
-
-      // 3. Find or create the Assessment
-      const assessmentRecord = await prisma.assessment.upsert({
-        where:  { name_classId: { name: record.assessment, classId: classRecord.id } },
-        update: { date: record.date || undefined },
-        create: {
-          classId: classRecord.id,
-          name:    record.assessment,
-          date:    record.date   || null,
-          topic:   record.notes  || null,
-        },
-      });
-
-      // 4. Upsert the Score (update if student retook the same assessment)
-      await prisma.score.upsert({
-        where: {
-          studentId_assessmentId: {
-            studentId:    studentRecord.id,
-            assessmentId: assessmentRecord.id,
-          },
-        },
-        update: { score: record.grade },
-        create: {
-          studentId:    studentRecord.id,
-          assessmentId: assessmentRecord.id,
-          score:        record.grade,
-        },
-      });
-
-    } catch (err) {
-      chunkErrors.push({
-        row:    rowIdx + 1,
-        reason: `DB write failed: ${err.message}`,
-        data:   record.studentName,
-      });
-    }
-  }
-
-  return chunkErrors;
 }
 
 module.exports = { importSessionData };
