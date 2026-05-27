@@ -126,6 +126,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       sheetName: bestSheet,
       availableSheets,
       headers: table.headers,
+      colIndices: table.colIndices,
       headerRow: table.headerRow,
       dataStartRow: table.dataStartRow,
       dataEndRow: table.dataEndRow,

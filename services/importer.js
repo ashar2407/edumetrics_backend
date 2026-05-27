@@ -234,28 +234,36 @@ function normaliseGrade(raw, maxRaw) {
   if (!raw || raw.trim() === '') return null;
 
   const cleaned = raw.toString().trim();
+  let result = null;
 
   // Fraction: "43/50"
   if (cleaned.includes('/')) {
     const [num, den] = cleaned.split('/').map(p => parseFloat(p.trim()));
     if (!isNaN(num) && !isNaN(den) && den > 0) {
-      return parseFloat(((num / den) * 100).toFixed(2));
+      result = (num / den) * 100;
     }
   }
 
-  // Percentage: "87%" or plain "87"
-  const asNum = parseFloat(cleaned.replace(/[%,]/g, ''));
-  if (!isNaN(asNum)) {
-    // If max_score is given, convert raw mark to percentage
-    if (maxRaw) {
-      const max = parseFloat(maxRaw.replace(/[^0-9.]/g, ''));
-      if (!isNaN(max) && max > 0) {
-        return parseFloat(((asNum / max) * 100).toFixed(2));
+  if (result === null) {
+    // Percentage: "87%" or plain "87"
+    const asNum = parseFloat(cleaned.replace(/[%,]/g, ''));
+    if (!isNaN(asNum)) {
+      // If max_score is given, convert raw mark to percentage
+      if (maxRaw) {
+        const max = parseFloat(maxRaw.replace(/[^0-9.]/g, ''));
+        if (!isNaN(max) && max > 0) {
+          result = (asNum / max) * 100;
+        }
       }
+      if (result === null) result = asNum;
     }
-    // If value looks like a raw percentage (0-100), use as-is
-    return parseFloat(asNum.toFixed(2));
   }
+
+  if (result !== null) {
+    return parseFloat(Math.min(100, Math.max(0, result)).toFixed(2));
+  }
+
+  const letterKey = cleaned.toLowerCase();
 
   // Letter grades (US)
   const letterGrades = {
@@ -265,18 +273,11 @@ function normaliseGrade(raw, maxRaw) {
     'd+': 55,  'd': 50, 'd-': 45,
     'f': 0,    'e': 40,
   };
-  const letterKey = cleaned.toLowerCase();
   if (letterGrades[letterKey] !== undefined) return letterGrades[letterKey];
 
   // UK A-Level
   const aLevel = { 'a*': 100, 'a': 85, 'b': 70, 'c': 55, 'd': 40, 'e': 25, 'u': 0 };
   if (aLevel[letterKey] !== undefined) return aLevel[letterKey];
-
-  // UK GCSE numeric (9-1)
-  const gcseNum = parseInt(cleaned);
-  if (!isNaN(gcseNum) && gcseNum >= 1 && gcseNum <= 9) {
-    return Math.round((gcseNum / 9) * 100);
-  }
 
   // UK Degree classification
   const ukDegree = {
