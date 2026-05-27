@@ -261,6 +261,14 @@ router.post('/:sessionId/run', async (req, res) => {
   }
 
   try {
+    // If max_score wasn't mapped by the user but was detected by fuzzy/AI, apply it automatically
+    if (!session.confirmedMapping.max_score && session.suggestedMapping?.max_score?.column) {
+      session.confirmedMapping = {
+        ...session.confirmedMapping,
+        max_score: session.suggestedMapping.max_score.column,
+      };
+    }
+
     const result = await importSessionData(session, prisma);
 
     // Clean up temp file

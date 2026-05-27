@@ -165,6 +165,71 @@ router.get('/:id/students', async (req, res) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// GET /api/classes/:id/assessments
+// Returns all assessments in a class with score counts.
+// ────────────────────────────────────────────────────────────────
+router.get('/:id/assessments', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+
+  try {
+    const cls = await getOwnedClass(req.params.id, userId);
+    if (!cls) return res.status(404).json({ error: 'Class not found.' });
+
+    const assessments = await prisma.assessment.findMany({
+      where:   { classId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id:        true,
+        name:      true,
+        date:      true,
+        createdAt: true,
+        _count: { select: { scores: true } },
+      },
+    });
+
+    return res.json({
+      assessments: assessments.map(a => ({
+        id:         a.id,
+        name:       a.name,
+        date:       a.date,
+        createdAt:  a.createdAt,
+        scoreCount: a._count.scores,
+      })),
+    });
+  } catch (err) {
+    console.error('[classes/assessments]', err);
+    return res.status(500).json({ error: 'Failed to fetch assessments.' });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────
+// DELETE /api/classes/:classId/assessments/:assessmentId
+// Removes an assessment and all its scores from a class.
+// ────────────────────────────────────────────────────────────────
+router.delete('/:classId/assessments/:assessmentId', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+
+  try {
+    const cls = await getOwnedClass(req.params.classId, userId);
+    if (!cls) return res.status(404).json({ error: 'Class not found.' });
+
+    const assessment = await prisma.assessment.findFirst({
+      where: { id: req.params.assessmentId, classId: req.params.classId },
+    });
+    if (!assessment) return res.status(404).json({ error: 'Assessment not found in this class.' });
+
+    await prisma.assessment.delete({ where: { id: req.params.assessmentId } });
+
+    return res.json({ status: 'deleted', id: req.params.assessmentId });
+  } catch (err) {
+    console.error('[classes/delete-assessment]', err);
+    return res.status(500).json({ error: 'Failed to remove assessment.' });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────
 // DELETE /api/classes/:classId/students/:studentId
 // Removes a student and all their scores from a class.
 // ────────────────────────────────────────────────────────────────
