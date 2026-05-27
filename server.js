@@ -191,7 +191,7 @@ app.get('/api/dashboard/:userId', async (req, res) => {
       include: {
         students: { include: { scores: true } },
         assessments: {
-          orderBy: { date: 'asc' },
+          orderBy: [{ date: 'asc' }, { name: 'asc' }],
           include: { scores: true }
         }
       }
