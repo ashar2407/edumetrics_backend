@@ -97,8 +97,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     let finalMapping, mappingSource, templateName;
 
     if (savedTemplate) {
-      // ✓ Known format — apply saved template immediately
-      finalMapping  = savedTemplate.mappings;  // already a plain object
+      // Wrap plain string values in serialized format so frontend dropdowns pre-fill
+      const wrapped = {};
+      for (const [field, col] of Object.entries(savedTemplate.mappings || {})) {
+        if (typeof col === 'string' && col) {
+          wrapped[field] = { column: col, score: 1.0, source: 'template', confidence: 'high' };
+        }
+      }
+      finalMapping  = wrapped;
       mappingSource = 'template';
       templateName  = savedTemplate.name;
     } else {
@@ -158,6 +164,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       mapping:          finalMapping,
       mappingSource,
       templateName:     templateName || null,
+      templateId:       savedTemplate?.id || null,
       needsConfirmation: mappingSource !== 'template',
     });
 
