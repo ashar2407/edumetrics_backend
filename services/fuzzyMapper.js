@@ -147,7 +147,19 @@ function requiresAiAssist(fuzzyMapping) {
 function mergeConfidence(fuzzy, ai) {
   const merged = { ...fuzzy };
 
+  // Track which columns are already committed by fuzzy at high confidence
+  // so AI suggestions can't reassign those columns to a different field
+  const lockedColumns = new Set(
+    Object.values(fuzzy)
+      .filter(v => v.score >= 0.85)
+      .map(v => v.column)
+  );
+
   for (const [field, aiResult] of Object.entries(ai)) {
+    // Don't let AI steal a column that fuzzy already mapped with high confidence
+    if (lockedColumns.has(aiResult.column) && merged[field]?.column !== aiResult.column) {
+      continue;
+    }
     if (!merged[field] || merged[field].score < aiResult.score) {
       merged[field] = { ...aiResult, source: 'ai' };
     }
